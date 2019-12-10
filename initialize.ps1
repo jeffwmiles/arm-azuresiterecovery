@@ -1,5 +1,5 @@
 
-## This script is used to deploy and set up Azure Site Recovery for a CX Azure client
+## This script is used to deploy and set up Azure Site Recovery.
 ## It is intended to be run following Terraform deployment which includes required DR components
 
 # Pre-Existing authentication to Azure in a Shell needs to exist before running this script
@@ -7,7 +7,7 @@
 
 param(
     [parameter(Mandatory = $false)]
-    [string]$prefix = "hen",
+    [string]$prefix = "<ABC>",
     [parameter(Mandatory = $false)]
     [string]$ResourceGroupName = "$prefix-dr-srv-rg", # this is the RG that ASR will be built under
     [parameter(Mandatory = $false)]
