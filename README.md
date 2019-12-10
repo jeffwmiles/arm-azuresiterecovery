@@ -22,6 +22,7 @@ Before you begin, ensure you have met the following requirements:
 * You have an understanding of [Azure Site Recovery for Azure-to-Azure](https://docs.microsoft.com/en-us/azure/site-recovery/azure-to-azure-architecture)
 
 * Have a source environment that matches the definition in the ARM template (VM name structure primarily)
+
     | Type        | Name           | ResourceGroup  |
     | ------------- |:-------------:| -----:|
     | Virtual Machine      | $prefix-ads1      | $prefix-mgmt-rg |
