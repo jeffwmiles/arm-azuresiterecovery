@@ -34,7 +34,7 @@ if ($tests.Contains("false")) {
 else {
     # Test is all true, now check the ARM template validation
     write-host "Pre-requisite tests passed, proceeding with ARM validation" -ForegroundColor Green
-    $testarm = Test-AzResourceGroupDeployment -ResourceGroupName $ResourceGroupName -TemplateFile .\template.json -TemplateParameterFile .\parameters.json
+    $testarm = Test-AzResourceGroupDeployment -ResourceGroupName $ResourceGroupName -TemplateFile .\azuredeploy.json -TemplateParameterFile .\azuredeploy.parameters.json
     if (!$null -eq $testarm) {
         write-host "ARM template validation has failed. Output will follow, please investigate and retry" -ForegroundColor Red
         $testarm
@@ -73,7 +73,7 @@ else {
         Write-Host "ARM deployment underway, this may take some time ..."
         Write-Host "You can view deployment progress in the Portal under resource group <prefix>-dr-srv-rg -> Deployments"
         $datestamp = get-date -Format "yyyy-MM-dd.hh.mm"
-        New-AzResourceGroupDeployment -ResourceGroupName $ResourceGroupName -Name "$($prefix)_DR_Deploy_$datestamp" -TemplateFile .\template.json -TemplateParameterFile .\parameters.json -Mode "incremental"
+        New-AzResourceGroupDeployment -ResourceGroupName $ResourceGroupName -Name "$($prefix)_DR_Deploy_$datestamp" -TemplateFile .\azuredeploy.json -TemplateParameterFile .\azuredeploy.parameters.json -Mode "incremental"
 
         Write-Host "Adding Resource Group Locks" -ForegroundColor "Yellow"
         foreach ($rg in $rgs) {
