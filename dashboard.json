@@ -1,0 +1,405 @@
+{
+  "properties": {
+    "lenses": {
+      "0": {
+        "order": 0,
+        "parts": {
+          "0": {
+            "position": {
+              "x": 0,
+              "y": 0,
+              "colSpan": 6,
+              "rowSpan": 4
+            },
+            "metadata": {
+              "inputs": [
+                {
+                  "name": "ComponentId",
+                  "value": {
+                    "SubscriptionId": "<subscriptionID>",
+                    "ResourceGroup": "<resource group of log analytics workspace",
+                    "Name": "<name of log analytics workspace>",
+                    "ResourceId": "/subscriptions/<subid>/resourcegroups/<rg name>/providers/microsoft.operationalinsights/workspaces/<name of log analytics workspace>"
+                  }
+                },
+                {
+                  "name": "Query",
+                  "value": "AzureDiagnostics \r\n| where replicationProviderName_s == \"A2A\"   \r\n| where isnotempty(name_s) and isnotnull(name_s)   \r\n| summarize hint.strategy=partitioned arg_max(TimeGenerated, *) by name_s   \r\n| project VirtualMachine = name_s , Vault = Resource , ReplicationHealth = replicationHealth_s, Status = protectionState_s, RPO_in_seconds = rpoInSeconds_d, TestFailoverStatus = failoverHealth_s, AgentVersion = agentVersion_s, SourceLocation = primaryFabricName_s\n"
+                },
+                {
+                  "name": "TimeRange",
+                  "value": "P1D"
+                },
+                {
+                  "name": "Version",
+                  "value": "1.0"
+                },
+                {
+                  "name": "PartId",
+                  "value": "98db1548-b4a6-4344-985a-887686e6c7af"
+                },
+                {
+                  "name": "PartTitle",
+                  "value": "Analytics"
+                },
+                {
+                  "name": "PartSubTitle",
+                  "value": "Workspace"
+                },
+                {
+                  "name": "resourceTypeMode",
+                  "value": "workspace"
+                },
+                {
+                  "name": "ControlType",
+                  "value": "AnalyticsGrid"
+                },
+                {
+                  "name": "Dimensions",
+                  "isOptional": true
+                },
+                {
+                  "name": "DashboardId",
+                  "isOptional": true
+                },
+                {
+                  "name": "SpecificChart",
+                  "isOptional": true
+                }
+              ],
+              "type": "Extension/AppInsightsExtension/PartType/AnalyticsPart",
+              "settings": {
+                "content": {
+                  "PartTitle": "Replication Summary",
+                  "PartSubTitle": "Workspace"
+                }
+              },
+              "asset": {
+                "idInputName": "ComponentId",
+                "type": "ApplicationInsights"
+              }
+            }
+          },
+          "1": {
+            "position": {
+              "x": 6,
+              "y": 0,
+              "colSpan": 5,
+              "rowSpan": 4
+            },
+            "metadata": {
+              "inputs": [
+                {
+                  "name": "ComponentId",
+                  "value": {
+                    "SubscriptionId": "<subscriptionID>",
+                    "ResourceGroup": "<resource group of log analytics workspace",
+                    "Name": "<name of log analytics workspace>",
+                    "ResourceId": "/subscriptions/<subid>/resourcegroups/<rg name>/providers/microsoft.operationalinsights/workspaces/<name of log analytics workspace>"
+                  }
+                },
+                {
+                  "name": "Query",
+                  "value": "AzureDiagnostics \r\n| where replicationProviderName_s == \"A2A\"   \r\n| where isnotempty(name_s) and isnotnull(name_s)  \r\n| extend RPO = case(rpoInSeconds_d <= 900, \"<15Min\", rpoInSeconds_d <= 1800, \"15-30Min\", \">30Min\")  \r\n| summarize hint.strategy=partitioned arg_max(TimeGenerated, *) by name_s  \r\n| project name_s , RPO  \r\n| summarize Count = count() by RPO  \r\n| render barchart\n"
+                },
+                {
+                  "name": "TimeRange",
+                  "value": "P1D"
+                },
+                {
+                  "name": "Dimensions",
+                  "value": {
+                    "xAxis": {
+                      "name": "RPO",
+                      "type": "string"
+                    },
+                    "yAxis": [
+                      {
+                        "name": "Count",
+                        "type": "long"
+                      }
+                    ],
+                    "splitBy": [],
+                    "aggregation": "Sum"
+                  }
+                },
+                {
+                  "name": "Version",
+                  "value": "1.0"
+                },
+                {
+                  "name": "PartId",
+                  "value": "ecd99bb5-6d35-46c4-af98-3308e30bf485"
+                },
+                {
+                  "name": "PartTitle",
+                  "value": "Analytics"
+                },
+                {
+                  "name": "PartSubTitle",
+                  "value": "Workspace"
+                },
+                {
+                  "name": "resourceTypeMode",
+                  "value": "workspace"
+                },
+                {
+                  "name": "ControlType",
+                  "value": "AnalyticsChart"
+                },
+                {
+                  "name": "SpecificChart",
+                  "value": "Bar"
+                },
+                {
+                  "name": "DashboardId",
+                  "isOptional": true
+                }
+              ],
+              "type": "Extension/AppInsightsExtension/PartType/AnalyticsPart",
+              "settings": {
+                "content": {
+                  "PartTitle": "Count of RPO less than 15 min",
+                  "PartSubTitle": "Workspace"
+                }
+              },
+              "asset": {
+                "idInputName": "ComponentId",
+                "type": "ApplicationInsights"
+              }
+            }
+          },
+          "2": {
+            "position": {
+              "x": 11,
+              "y": 0,
+              "colSpan": 6,
+              "rowSpan": 4
+            },
+            "metadata": {
+              "inputs": [
+                {
+                  "name": "ComponentId",
+                  "value": {
+                    "SubscriptionId": "<subscriptionID>",
+                    "ResourceGroup": "<resource group of log analytics workspace",
+                    "Name": "<name of log analytics workspace>",
+                    "ResourceId": "/subscriptions/<subid>/resourcegroups/<rg name>/providers/microsoft.operationalinsights/workspaces/<name of log analytics workspace>"
+                  }
+                },
+                {
+                  "name": "Query",
+                  "value": "AzureDiagnostics\r\n| where replicationProviderName_s == \"A2A\"   \r\n| where isnotempty(name_s) and isnotnull(name_s)  \r\n| summarize hint.strategy=partitioned arg_max(TimeGenerated, *) by name_s  \r\n| project name_s , replicationHealth_s  \r\n| summarize count() by replicationHealth_s  \r\n| render piechart\n"
+                },
+                {
+                  "name": "TimeRange",
+                  "value": "P1D"
+                },
+                {
+                  "name": "Dimensions",
+                  "value": {
+                    "xAxis": {
+                      "name": "replicationHealth_s",
+                      "type": "string"
+                    },
+                    "yAxis": [
+                      {
+                        "name": "count_",
+                        "type": "long"
+                      }
+                    ],
+                    "splitBy": [],
+                    "aggregation": "Sum"
+                  }
+                },
+                {
+                  "name": "Version",
+                  "value": "1.0"
+                },
+                {
+                  "name": "PartId",
+                  "value": "876796fa-6204-42c6-a545-82bb72bf4aa4"
+                },
+                {
+                  "name": "PartTitle",
+                  "value": "Analytics"
+                },
+                {
+                  "name": "PartSubTitle",
+                  "value": "Workspace"
+                },
+                {
+                  "name": "resourceTypeMode",
+                  "value": "workspace"
+                },
+                {
+                  "name": "ControlType",
+                  "value": "AnalyticsDonut"
+                },
+                {
+                  "name": "DashboardId",
+                  "isOptional": true
+                },
+                {
+                  "name": "SpecificChart",
+                  "isOptional": true
+                }
+              ],
+              "type": "Extension/AppInsightsExtension/PartType/AnalyticsPart",
+              "settings": {
+                "content": {
+                  "PartTitle": "Count of Health Status",
+                  "PartSubTitle": "Workspace"
+                }
+              },
+              "asset": {
+                "idInputName": "ComponentId",
+                "type": "ApplicationInsights"
+              }
+            }
+          },
+          "3": {
+            "position": {
+              "x": 0,
+              "y": 4,
+              "colSpan": 13,
+              "rowSpan": 4
+            },
+            "metadata": {
+              "inputs": [
+                {
+                  "name": "ComponentId",
+                  "value": {
+                    "SubscriptionId": "<subscriptionID>",
+                    "ResourceGroup": "<resource group of log analytics workspace",
+                    "Name": "<name of log analytics workspace>",
+                    "ResourceId": "/subscriptions/<subid>/resourcegroups/<rg name>/providers/microsoft.operationalinsights/workspaces/<name of log analytics workspace>"
+                  }
+                },
+                {
+                  "name": "Query",
+                  "value": "AzureDiagnostics   \r\n| where replicationProviderName_s == \"A2A\"   \r\n| where TimeGenerated > ago(72h)  \r\n| where isnotempty(name_s) and isnotnull(name_s)  \r\n| project TimeGenerated, name_s , RPO_in_minutes = rpoInSeconds_d/60    \r\n| render timechart\n"
+                },
+                {
+                  "name": "Dimensions",
+                  "value": {
+                    "xAxis": {
+                      "name": "TimeGenerated",
+                      "type": "datetime"
+                    },
+                    "yAxis": [
+                      {
+                        "name": "RPO_in_minutes",
+                        "type": "real"
+                      }
+                    ],
+                    "splitBy": [
+                      {
+                        "name": "name_s",
+                        "type": "string"
+                      }
+                    ],
+                    "aggregation": "Sum"
+                  }
+                },
+                {
+                  "name": "Version",
+                  "value": "1.0"
+                },
+                {
+                  "name": "PartId",
+                  "value": "67be4ce6-76f0-4974-af0f-e37fc459fe70"
+                },
+                {
+                  "name": "PartTitle",
+                  "value": "Analytics"
+                },
+                {
+                  "name": "PartSubTitle",
+                  "value": "Workspace"
+                },
+                {
+                  "name": "resourceTypeMode",
+                  "value": "workspace"
+                },
+                {
+                  "name": "ControlType",
+                  "value": "AnalyticsChart"
+                },
+                {
+                  "name": "SpecificChart",
+                  "value": "Line"
+                },
+                {
+                  "name": "TimeRange",
+                  "isOptional": true
+                },
+                {
+                  "name": "DashboardId",
+                  "isOptional": true
+                }
+              ],
+              "type": "Extension/AppInsightsExtension/PartType/AnalyticsPart",
+              "settings": {
+                "content": {
+                  "PartTitle": "RPO Time over 72 hours (Minutes)",
+                  "PartSubTitle": "Management VMs"
+                }
+              },
+              "asset": {
+                "idInputName": "ComponentId",
+                "type": "ApplicationInsights"
+              }
+            }
+          }
+        }
+      }
+    },
+    "metadata": {
+      "model": {
+        "timeRange": {
+          "value": {
+            "relative": {
+              "duration": 24,
+              "timeUnit": 1
+            }
+          },
+          "type": "MsPortalFx.Composition.Configuration.ValueTypes.TimeRange"
+        },
+        "filterLocale": {
+          "value": "en-us"
+        },
+        "filters": {
+          "value": {
+            "MsPortalFx_TimeRange": {
+              "model": {
+                "format": "utc",
+                "granularity": "auto",
+                "relative": "24h"
+              },
+              "displayCache": {
+                "name": "UTC Time",
+                "value": "Past 24 hours"
+              },
+              "filteredPartIds": [
+                "StartboardPart-AnalyticsPart-2d61cbd1-046e-4ba8-ae04-7f8d88460005",
+                "StartboardPart-AnalyticsPart-2d61cbd1-046e-4ba8-ae04-7f8d88460007",
+                "StartboardPart-AnalyticsPart-2d61cbd1-046e-4ba8-ae04-7f8d88460009",
+                "StartboardPart-AnalyticsPart-2d61cbd1-046e-4ba8-ae04-7f8d8846000b",
+                "StartboardPart-AnalyticsPart-2d61cbd1-046e-4ba8-ae04-7f8d8846000d",
+                "StartboardPart-AnalyticsPart-2d61cbd1-046e-4ba8-ae04-7f8d8846000f"
+              ]
+            }
+          }
+        }
+      }
+    }
+  },
+  "name": "ASR Summary",
+  "type": "Microsoft.Portal/dashboards",
+  "location": "INSERT LOCATION",
+  "tags": {
+    "hidden-title": "ASR Summary"
+  },
+  "apiVersion": "2015-08-01-preview"
+}

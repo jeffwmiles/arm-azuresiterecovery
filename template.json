@@ -1,0 +1,813 @@
+{
+    "$schema": "https://schema.management.azure.com/schemas/2015-01-01/deploymentTemplate.json#",
+    "contentVersion": "1.0.0.0",
+    "parameters": {
+        "prefix": {
+            "type": "String"
+        },
+        "first3octets": {
+            "type": "String"
+        },
+        "destination_region": { // This parameter can't have any spaces
+            "type": "String"
+        },
+        "source_region": { // This parameter can't have any spaces
+            "type": "String"
+        },
+        "recoveryTargetDiskAccountType_default": { // Destination disk type for all disks (we default to Standard, but may want to do Premium)
+            "defaultValue": "Standard_LRS",
+            "type": "String"
+        },
+        "test_dnsname": { // FQDN of web site - to be injected for DR test to override DNS resolution
+            "type": "String"
+        },
+        "runbookstg": { // Name of storage account where runbook PS1 files have been uploaded to.
+            "type": "String"
+        },
+        "automationRegion": { // Where is the automation account containing runbooks to run during DR going to reside?
+            "allowedValues": [
+                "westeurope",
+                "southeastasia",
+                "eastus2",
+                "southcentralus",
+                "japaneast",
+                "northeurope",
+                "canadacentral",
+                "australiasoutheast",
+                "centralindia",
+                "westcentralus",
+                "centralus"
+            ],
+            "type": "String"
+        }
+    },
+    "variables": {
+        "assets": {
+            // An array of variables used to set Azure Automation Account variable values (for the Runbooks to use in recovery plans)
+            "aaVariables": {
+                "AzureSubscriptionId": {
+                    "name": "AzureSubscriptionId",
+                    "description": "Azure subscription Id"
+                    // Value not required to be set here, calculated by ARM template and inserted upon creation
+                },
+                "prefix": {
+                    "name": "prefix",
+                    "description": "prefix to use for unique environment",
+                    "value": "[parameters('prefix')]"
+
+                },
+                "First3Octets": {
+                    "name": "First3Octets",
+                    "description": "First 3 Octets used for applying the web server IP addresses",
+                    "value": "[parameters('first3octets')]"
+                },
+                "test_dnsname": {
+                    "name": "test_dnsname",
+                    "description": "FQDN of web site - to be injected for DR test to override DNS resolution",
+                    "value": "[parameters('test_dnsname')]"
+                }
+            }
+        },
+
+        // Declare a whole bunch of variables, because it makes understanding the template easier
+
+        "runbooksLocation": "[concat('https://',parameters('runbookstg'),'.blob.core.windows.net/dr-runbooks')]", // URI to runbook powershell file location, where runbooks PS1 have been uploaded
+        "automation-dr-accountname": "[concat(parameters('prefix'),'-dr-automation')]",
+        "runbook_attach-web-secondary-ip_name": "dr-attachwebsecondaryip-runbook", // "[concat(parameters('prefix'),'dr-attachwebsecondaryip-runbook')]"
+        "runbook_attach-public-ip_name": "dr-attachpublicip-runbook", // "[concat(parameters('prefix'),'dr-attachpublicip-runbook')]"
+        "runbook_add-nsg-for-rdp_name": "dr-addnsgforrdp-runbook", // "[concat(parameters('prefix'),'dr-addnsgforrdp-runbook')]"
+        "runbook_enable-extension-update": "dr-enableextensionupdate", // "[concat(parameters('prefix'),'dr-enableextensionupdate')]"
+        "runbook_add-host-file-entries": "dr-addhostfileentries-runbook", // "[concat(parameters('prefix'),'dr-addhostfileentries-runbook')]"
+        "sourcevnetResourceGroupName": "[concat(parameters('prefix'),'-srv-rg')]", // Name of RG the source VNET resides in
+        "destinationvnetResourceGroupName": "[concat(parameters('prefix'),'-dr-srv-rg')]", // Name of RG the destination VNET resides in
+        "sourcevNetName": "[concat(parameters('prefix'),'-vnet')]",
+        "destinationvNetName": "[concat(parameters('prefix'),'-vnet')]",
+        "vaults_rsv_name": "[concat(parameters('prefix'),'-dr-rsv')]", // Name of the Recovery Services vault to be created for ASR purposes
+        "source_asr_cache_stg": "[concat(parameters('prefix'),'drsourcecachestg')]", // Storage account for ASR cache, on source side region but in DR resource group
+        "vm_web_rg_source": "[concat(parameters('prefix'),'-web-rg')]", // Resource group on source-side that Web vms sit in
+        "vm_iaas_rg_dr": "[concat(parameters('prefix'),'-dr-web-rg')]", // Resource group on destination-side that web vms will sit in when recovered
+        "vm_mgmt_rg_source": "[concat(parameters('prefix'),'-mgmt-rg')]", // Resource group on source-side that management vms sit in
+        "vm_mgmt_rg_dr": "[concat(parameters('prefix'),'-dr-mgmt-rg')]", // Resource group on source-side that management vms sit in
+
+        "sourceFabricName": "[concat(variables('vaults_rsv_name'), '/', parameters('source_region'),'-fabric')]",
+        "targetFabricName": "[concat(variables('vaults_rsv_name'), '/', parameters('destination_region'),'-fabric')]",
+        "sourceFabricId": "[resourceId('Microsoft.RecoveryServices/vaults/replicationFabrics',variables('vaults_rsv_name'),concat(parameters('source_region'),'-fabric'))]",
+        "targetFabricId": "[resourceId('Microsoft.RecoveryServices/vaults/replicationFabrics',variables('vaults_rsv_name'),concat(parameters('destination_region'),'-fabric'))]",
+
+        "sourceContainerName": "[concat(variables('sourceFabricName'), '/', parameters('source_region'), '-container')]",
+        "targetContainerName": "[concat(variables('targetFabricName'), '/', parameters('destination_region'), '-container')]",
+        "sourceContainerId": "[resourceId('Microsoft.RecoveryServices/vaults/replicationFabrics/replicationProtectionContainers',variables('vaults_rsv_name'),concat(parameters('source_region'),'-fabric'),concat(parameters('source_region'),'-container'))]",
+        "targetContainerId": "[resourceId('Microsoft.RecoveryServices/vaults/replicationFabrics/replicationProtectionContainers',variables('vaults_rsv_name'),concat(parameters('destination_region'),'-fabric'),concat(parameters('destination_region'),'-container'))]",
+
+        "sourceContainerMappingName": "[concat(variables('sourceContainerName'), '/', parameters('source_region'), '-', parameters('destination_region'), '-24-hour-retention-policy')]",
+        "targetContainerMappingName": "[concat(variables('targetContainerName'), '/', parameters('destination_region'), '-', parameters('source_region'), '-24-hour-retention-policy')]",
+        "sourceContainerMappingId": "[resourceId('Microsoft.RecoveryServices/vaults/replicationFabrics/replicationProtectionContainers/replicationProtectionContainerMappings',variables('vaults_rsv_name'),concat(parameters('source_region'),'-fabric'),concat(parameters('source_region'),'-container'), concat(parameters('source_region'),'-', parameters('destination_region'),'-24-hour-retention-policy'))]",
+        //"targetContainerMappingId": "[resourceId('Microsoft.RecoveryServices/vaults/replicationFabrics/replicationProtectionContainers/replicationProtectionContainerMappings',variables('vaults_rsv_name'),concat(parameters('destination_region'),'-fabric'),concat(parameters('destination_region'),'-container'), concat(parameters('destination_region'), '-', parameters('source_region'),'-24-hour-retention-policy'))]",
+
+        "sourcevNetMappingName": "[concat(variables('sourceFabricName'), '/azureNetwork/', parameters('source_region'),'-', parameters('destination_region'),'-',variables('sourcevNetName'))]",
+        "targetvNetMappingName": "[concat(variables('targetFabricName'), '/azureNetwork/', parameters('destination_region'),'-', parameters('source_region'),'-',variables('destinationvNetName'))]",
+        "sourcevNetMappingId": "[resourceId('Microsoft.RecoveryServices/vaults/replicationFabrics/replicationNetworks/replicationNetworkMappings',variables('vaults_rsv_name'),concat(parameters('source_region'),'-fabric'),'AzureNetwork',concat(parameters('source_region'), '-', parameters('destination_region'),'-',variables('sourcevNetName')))]",
+        "targetvNetMappingId": "[resourceId('Microsoft.RecoveryServices/vaults/replicationFabrics/replicationNetworks/replicationNetworkMappings',variables('vaults_rsv_name'),concat(parameters('destination_region'),'-fabric'),'AzureNetwork',concat(parameters('destination_region'), '-', parameters('source_region'),'-',variables('destinationvNetName')))]",
+
+        // Set of variables used to define runbooks for importing into Azure Automation account
+        "asrScripts": {
+            "runbooks": [
+                {
+                    "name": "[variables('runbook_attach-web-secondary-ip_name')]",
+                    "url": "[concat(variables('runbooksLocation'),'/',variables('runbook_attach-web-secondary-ip_name'),'.ps1')]",
+                    "version": "1.4.0.0",
+                    "type": "PowerShell",
+                    "description": "ASR Runbook to attach secondary web IP addresses to all web servers"
+                },
+                {
+                    "name": "[variables('runbook_attach-public-ip_name')]",
+                    "url": "[concat(variables('runbooksLocation'),'/',variables('runbook_attach-public-ip_name'),'.ps1')]",
+                    "version": "1.3.0.0",
+                    "type": "PowerShell",
+                    "description": "ASR Runbook to attach pre-existing public IP address to RDP server"
+                },
+                {
+                    "name": "[variables('runbook_add-nsg-for-rdp_name')]",
+                    "url": "[concat(variables('runbooksLocation'),'/',variables('runbook_add-nsg-for-rdp_name'),'.ps1')]",
+                    "version": "1.3.0.0",
+                    "type": "PowerShell",
+                    "description": "ASR Runbook to enable NSG rules for RDP from subnet to subnet"
+                },
+                {
+                    "name": "[variables('runbook_enable-extension-update')]",
+                    "url": "[concat(variables('runbooksLocation'),'/',variables('runbook_enable-extension-update'),'.ps1')]",
+                    "version": "1.3.0.0",
+                    "type": "PowerShell",
+                    "description": "ASR Runbook be run manually for enabling asr extension updates to automation account"
+                },
+                {
+                    "name": "[variables('runbook_add-host-file-entries')]",
+                    "url": "[concat(variables('runbooksLocation'),'/',variables('runbook_add-host-file-entries'),'.ps1')]",
+                    "version": "1.0.0.0",
+                    "type": "PowerShell",
+                    "description": "ASR Runbook to add FQDN dns names to RDP host file to support DR test functionality"
+                }
+            ],
+            // Define the required modules for the Runbooks we're using
+            "modules": [
+                {
+                    "name": "Az.Compute",
+                    "url": "https://devopsgallerystorage.blob.core.windows.net/packages/az.compute.2.7.0.nupkg"
+                },
+                {
+                    "name": "Az.Resources",
+                    "url": "https://devopsgallerystorage.blob.core.windows.net/packages/az.resources.1.7.0.nupkg"
+                },
+                {
+                    "name": "Az.Network",
+                    "url": "https://devopsgallerystorage.blob.core.windows.net/packages/az.network.1.15.0.nupkg"
+                },
+                {
+                    "name": "Az.Automation",
+                    "url": "https://devopsgallerystorage.blob.core.windows.net/packages/az.automation.1.3.4.nupkg"
+                }
+            ]
+        },
+        // Define AzAccounts as a separate variable, because it will need to be called first for import into Automation Account, before all the others
+        "AzAccounts": {
+            "name": "Az.Accounts",
+            "url": "https://devopsgallerystorage.blob.core.windows.net/packages/az.accounts.1.6.3.nupkg"
+        }
+    },
+
+
+    // Lets build some stuff!
+
+    "resources": [
+        {
+            // Cache Storage Account
+            "apiVersion": "2017-06-01",
+            "type": "Microsoft.Storage/storageAccounts",
+            "name": "[variables('source_asr_cache_stg')]",
+            "location": "[parameters('source_region')]",
+            "sku": {
+                "name": "Standard_LRS"
+            },
+            "kind": "Storage",
+            "properties": {},
+            "tags": {
+                "Owner": "Infrastructure",
+                "Prefix": "[parameters('prefix')]",
+                "EnvironmentType":"DisasterRecovery"
+            }
+        },
+        {
+            // Recovery Services Vault - DR specific
+            "type": "Microsoft.RecoveryServices/vaults",
+            "apiVersion": "2018-01-10",
+            "name": "[variables('vaults_rsv_name')]",
+            "location": "[parameters('destination_region')]",
+            "sku": {
+                "name": "Standard"
+            },
+            "properties": {},
+            "tags": {
+                "Owner": "Infrastructure",
+                "Prefix": "[parameters('prefix')]",
+                "EnvironmentType":"DisasterRecovery"
+            }
+        },
+        {
+            // Storage configuration to make LRS instead of GRS-default
+            "type": "Microsoft.RecoveryServices/vaults/backupstorageconfig",
+            "name": "[concat(variables('vaults_rsv_name'), '/vaultstorageconfig')]",
+            "apiVersion": "2018-01-10",
+            "dependsOn": [
+                "[resourceId('Microsoft.RecoveryServices/vaults/', variables('vaults_rsv_name'))]"
+            ],
+            "properties": {
+                "StorageModelType": "LocallyRedundant"
+            }
+        },
+        {
+            // Replication Policy - matches ASR default
+            "type": "Microsoft.RecoveryServices/vaults/replicationPolicies",
+            "apiVersion": "2018-01-10",
+            "name": "[concat(variables('vaults_rsv_name'), '/24-hour-retention-policy')]",
+            "properties": {
+                "providerSpecificInput": {
+                    "instanceType": "A2A",
+                    "appConsistentFrequencyInMinutes": 240,
+                    "crashConsistentFrequencyInMinutes": 5,
+                    "recoveryPointHistory": 1440,
+                    "multiVmSyncStatus": "Enable"
+                }
+            },
+            "dependsOn": [
+                "[resourceId('Microsoft.RecoveryServices/vaults', variables('vaults_rsv_name'))]"
+            ]
+        },
+        {
+            // Replication Fabric - Target Side
+            "type": "Microsoft.RecoveryServices/vaults/replicationFabrics",
+            "apiVersion": "2018-01-10",
+            "name": "[variables('targetFabricName')]",
+            "properties": {
+                "customDetails": {
+                    "instanceType": "Azure",
+                    "location": "[parameters('destination_region')]"
+                }
+            },
+            "dependsOn": [
+                "[resourceId('Microsoft.RecoveryServices/vaults', variables('vaults_rsv_name'))]",
+                "[variables('sourceFabricId')]"
+            ]
+        },
+        {
+            // Replication Fabric - Source Side
+            "type": "Microsoft.RecoveryServices/vaults/replicationFabrics",
+            "apiVersion": "2018-01-10",
+            "name": "[variables('sourceFabricName')]",
+            "properties": {
+                "customDetails": {
+                    "instanceType": "Azure",
+                    "location": "[parameters('source_region')]"
+                }
+            },
+            "dependsOn": [
+                "[resourceId('Microsoft.RecoveryServices/vaults', variables('vaults_rsv_name'))]"
+            ]
+        },
+        {
+            // Replication Container - Source Side
+            "type": "Microsoft.RecoveryServices/vaults/replicationFabrics/replicationProtectionContainers",
+            "apiVersion": "2018-01-10",
+            "name": "[variables('sourceContainerName')]",
+            "properties": {
+                "providerSpecificDetails": [
+                    {
+                        "instanceType": "A2A"
+                    }
+                ]
+            },
+            "dependsOn": [
+                "[variables('sourceFabricId')]"
+            ]
+        },
+        {
+            // Replication Container - Target Side
+            "type": "Microsoft.RecoveryServices/vaults/replicationFabrics/replicationProtectionContainers",
+            "apiVersion": "2018-01-10",
+            "name": "[variables('targetContainerName')]",
+            "properties": {
+                "providerSpecificDetails": [
+                    {
+                        "instanceType": "A2A"
+                    }
+                ]
+            },
+            "dependsOn": [
+                "[variables('targetFabricId')]"
+            ]
+        },
+        {
+            // Replication Protection Container Mapping - Source Side
+            "type": "Microsoft.RecoveryServices/vaults/replicationFabrics/replicationProtectionContainers/replicationProtectionContainerMappings",
+            "apiVersion": "2018-01-10",
+            "name": "[variables('sourceContainerMappingName')]",
+            "properties": {
+                "targetProtectionContainerId": "[variables('targetContainerId')]",
+                "policyId": "[resourceId('Microsoft.RecoveryServices/vaults/replicationPolicies', variables('vaults_rsv_name'), '24-hour-retention-policy')]",
+                "providerSpecificInput": {
+                    "instanceType": "ReplicationProviderSpecificContainerMappingInput"
+                }
+            },
+            "dependsOn": [
+                "[variables('targetFabricId')]",
+                "[variables('sourceFabricId')]",
+                "[resourceId('Microsoft.RecoveryServices/vaults/replicationPolicies', variables('vaults_rsv_name'), '24-hour-retention-policy')]"
+            ]
+        },
+        {
+            // Replication Protection Container Mapping - Target Side
+            "type": "Microsoft.RecoveryServices/vaults/replicationFabrics/replicationProtectionContainers/replicationProtectionContainerMappings",
+            "apiVersion": "2018-01-10",
+            "name": "[variables('targetContainerMappingName')]",
+            "properties": {
+                "targetProtectionContainerId": "[variables('sourceContainerId')]",
+                "policyId": "[resourceId('Microsoft.RecoveryServices/vaults/replicationPolicies', variables('vaults_rsv_name'), '24-hour-retention-policy')]",
+                "providerSpecificInput": {
+                    "instanceType": "ReplicationProviderSpecificContainerMappingInput"
+                }
+            },
+            "dependsOn": [
+                "[variables('sourceContainerMappingId')]",
+                "[resourceId('Microsoft.RecoveryServices/vaults/replicationPolicies', variables('vaults_rsv_name'), '24-hour-retention-policy')]"
+            ]
+        },
+        {
+            // Replication Network Mapping - Source Side
+            "type": "Microsoft.RecoveryServices/vaults/replicationFabrics/replicationNetworks/replicationNetworkMappings",
+            "apiVersion": "2018-07-10",
+            "name": "[variables('sourcevNetMappingName')]",
+            "properties": {
+                "recoveryFabricName": "[concat(parameters('destination_region'),'-fabric')]",
+                "recoveryNetworkId": "[resourceId(variables('destinationvnetResourceGroupName'),'Microsoft.Network/virtualNetworks', variables('destinationvNetName'))]",
+                "fabricSpecificDetails": {
+                    "instanceType": "AzureToAzure",
+                    "primaryNetworkId": "[resourceId(variables('sourcevnetResourceGroupName'),'Microsoft.Network/virtualNetworks', variables('sourcevNetName'))]"
+                }
+            },
+            "dependsOn": [
+                "[variables('sourceFabricId')]",
+                "[variables('targetFabricId')]"
+            ]
+        },
+        {
+            // Replication Network Mapping - Target Side
+            "type": "Microsoft.RecoveryServices/vaults/replicationFabrics/replicationNetworks/replicationNetworkMappings",
+            "apiVersion": "2018-07-10",
+            "name": "[variables('targetvNetMappingName')]",
+            "properties": {
+                "recoveryFabricName": "[concat(parameters('source_region'),'-fabric')]",
+                "recoveryNetworkId": "[resourceId(variables('sourcevnetResourceGroupName'),'Microsoft.Network/virtualNetworks', variables('sourcevNetName'))]",
+                "fabricSpecificDetails": {
+                    "instanceType": "AzureToAzure",
+                    "primaryNetworkId": "[resourceId(variables('destinationvnetResourceGroupName'),'Microsoft.Network/virtualNetworks', variables('destinationvNetName'))]"
+                }
+            },
+            "dependsOn": [
+                "[variables('sourcevNetMappingId')]",
+                "[variables('sourceFabricId')]",
+                "[variables('targetFabricId')]"
+            ]
+        },
+        {
+            // Domain controller #1 ADS1
+            "type": "Microsoft.RecoveryServices/vaults/replicationFabrics/replicationProtectionContainers/replicationProtectedItems",
+            "apiVersion": "2018-01-10",
+            "name": "[concat(variables('vaults_rsv_name'),'/',parameters('source_region'),'-fabric','/',parameters('source_region'),'-container/ads1')]",
+            "properties": {
+                "policyId": "[resourceId('Microsoft.RecoveryServices/vaults/replicationPolicies', variables('vaults_rsv_name'), '24-hour-retention-policy')]",
+                "providerSpecificDetails": {
+                    "instanceType": "A2A",
+                    "recoveryAzureVMName": "[concat(parameters('prefix'),'-ads1')]",
+                    "fabricObjectId": "[resourceId(variables('vm_mgmt_rg_source'), 'Microsoft.Compute/virtualmachines',concat(parameters('prefix'),'-ads1'))]",
+                    "recoveryContainerId": "[variables('targetContainerId')]",
+                    "recoveryResourceGroupId": "[concat(subscription().id,'/resourceGroups/',variables('vm_mgmt_rg_dr'))]",
+                    "RecoveryAvailabilitySetId": "[resourceId(variables('vm_mgmt_rg_dr'), 'Microsoft.Compute/availabilitySets',concat(parameters('prefix'),'-ads-dr-avset'))]",
+                    "primaryFabricLocation": "[parameters('source_region')]",
+                    "recoveryFabricLocation": "[parameters('destination_region')]",
+                    "recoveryAzureVMSize": "[reference(resourceId(variables('vm_mgmt_rg_source'), 'Microsoft.Compute/virtualmachines', concat(parameters('prefix'),'-ads1')), '2019-07-01').hardwareprofile.vmSize]",
+                    "vmManagedDisks": [
+                        {
+                            // OS Disk, get ID from VM reference
+                            "diskId": "[reference(resourceId(variables('vm_mgmt_rg_source'), 'Microsoft.Compute/virtualmachines', concat(parameters('prefix'),'-ads1')), '2019-07-01').storageProfile.osDisk.managedDisk.id]",
+                            "recoveryResourceGroupId": "[concat(subscription().id,'/resourceGroups/',variables('vm_mgmt_rg_dr'))]",
+                            "recoveryTargetDiskAccountType": "[parameters('recoveryTargetDiskAccountType_default')]",
+                            "primaryStagingAzureStorageAccountId": "[resourceId('Microsoft.Storage/storageAccounts', variables('source_asr_cache_stg'))]"
+                        },
+                        {
+                            // Data Disk #1 (zero count), get ID from VM reference
+                            "diskId": "[reference(resourceId(variables('vm_mgmt_rg_source'), 'Microsoft.Compute/virtualmachines', concat(parameters('prefix'),'-ads1')), '2019-07-01').storageProfile.datadisks[0].managedDisk.id]",
+                            "recoveryResourceGroupId": "[concat(subscription().id,'/resourceGroups/',variables('vm_mgmt_rg_dr'))]",
+                            "recoveryTargetDiskAccountType": "[parameters('recoveryTargetDiskAccountType_default')]",
+                            "primaryStagingAzureStorageAccountId": "[resourceId('Microsoft.Storage/storageAccounts', variables('source_asr_cache_stg'))]"
+                        }
+                    ]
+                }
+            },
+            "dependsOn": [
+                "[variables('sourceContainerId')]",
+                "[variables('targetContainerId')]",
+                "[variables('sourcevNetMappingId')]",
+                "[variables('targetvNetMappingId')]"
+            ]
+        },
+        {
+            // RDP1
+            "type": "Microsoft.RecoveryServices/vaults/replicationFabrics/replicationProtectionContainers/replicationProtectedItems",
+            "apiVersion": "2018-01-10",
+            "name": "[concat(variables('vaults_rsv_name'),'/',parameters('source_region'),'-fabric','/',parameters('source_region'),'-container/rdp1')]",
+            "properties": {
+                "policyId": "[resourceId('Microsoft.RecoveryServices/vaults/replicationPolicies', variables('vaults_rsv_name'), '24-hour-retention-policy')]",
+                "providerSpecificDetails": {
+                    "instanceType": "A2A",
+                    "recoveryAzureVMName": "[concat(parameters('prefix'),'-rdp1')]",
+                    "fabricObjectId": "[resourceId(variables('vm_mgmt_rg_source'), 'Microsoft.Compute/virtualmachines',concat(parameters('prefix'),'-rdp1'))]",
+                    "recoveryContainerId": "[variables('targetContainerId')]",
+                    "recoveryResourceGroupId": "[concat(subscription().id,'/resourceGroups/',variables('vm_mgmt_rg_dr'))]",
+                    "primaryFabricLocation": "[parameters('source_region')]",
+                    "recoveryFabricLocation": "[parameters('destination_region')]",
+                    "recoveryAzureVMSize": "[reference(resourceId(variables('vm_mgmt_rg_source'), 'Microsoft.Compute/virtualmachines', concat(parameters('prefix'),'-rdp1')), '2019-07-01').hardwareprofile.vmSize]",
+                    "vmManagedDisks": [
+                        {
+                            // OS Disk, get ID from VM reference
+                            "diskId": "[reference(resourceId(variables('vm_mgmt_rg_source'), 'Microsoft.Compute/virtualmachines', concat(parameters('prefix'),'-rdp1')), '2019-07-01').storageProfile.osDisk.managedDisk.id]",
+                            "recoveryResourceGroupId": "[concat(subscription().id,'/resourceGroups/',variables('vm_mgmt_rg_dr'))]",
+                            "recoveryTargetDiskAccountType": "[parameters('recoveryTargetDiskAccountType_default')]",
+                            "primaryStagingAzureStorageAccountId": "[resourceId('Microsoft.Storage/storageAccounts', variables('source_asr_cache_stg'))]"
+                        },
+                        {
+                            // Data Disk #1 (zero count), get ID from VM reference
+                            "diskId": "[reference(resourceId(variables('vm_mgmt_rg_source'), 'Microsoft.Compute/virtualmachines', concat(parameters('prefix'),'-rdp1')), '2019-07-01').storageProfile.datadisks[0].managedDisk.id]",
+                            "recoveryResourceGroupId": "[concat(subscription().id,'/resourceGroups/',variables('vm_mgmt_rg_dr'))]",
+                            "recoveryTargetDiskAccountType": "[parameters('recoveryTargetDiskAccountType_default')]",
+                            "primaryStagingAzureStorageAccountId": "[resourceId('Microsoft.Storage/storageAccounts', variables('source_asr_cache_stg'))]"
+                        }
+                    ]
+                }
+            },
+            "dependsOn": [
+                "[variables('sourceContainerId')]",
+                "[variables('targetContainerId')]",
+                "[variables('sourcevNetMappingId')]",
+                "[variables('targetvNetMappingId')]"
+            ]
+        },
+        {
+            // Web 1
+            "type": "Microsoft.RecoveryServices/vaults/replicationFabrics/replicationProtectionContainers/replicationProtectedItems",
+            "apiVersion": "2018-01-10",
+            "name": "[concat(variables('vaults_rsv_name'),'/',parameters('source_region'),'-fabric','/',parameters('source_region'),'-container/web1')]",
+            "properties": {
+                "policyId": "[resourceId('Microsoft.RecoveryServices/vaults/replicationPolicies', variables('vaults_rsv_name'), '24-hour-retention-policy')]",
+                "providerSpecificDetails": {
+                    "instanceType": "A2A",
+                    "recoveryAzureVMName": "[concat(parameters('prefix'),'-web1')]",
+                    "fabricObjectId": "[resourceId(variables('vm_web_rg_source'), 'Microsoft.Compute/virtualmachines',concat(parameters('prefix'),'-web1'))]",
+                    "recoveryContainerId": "[variables('targetContainerId')]",
+                    "recoveryResourceGroupId": "[concat(subscription().id,'/resourceGroups/',variables('vm_iaas_rg_dr'))]",
+                    "primaryFabricLocation": "[parameters('source_region')]",
+                    "recoveryFabricLocation": "[parameters('destination_region')]",
+                    "RecoveryAvailabilitySetId": "[resourceId(variables('vm_iaas_rg_dr'), 'Microsoft.Compute/availabilitySets',concat(parameters('prefix'),'-web-dr-avset'))]",
+                    "recoveryAzureVMSize": "[reference(resourceId(variables('vm_web_rg_source'), 'Microsoft.Compute/virtualmachines', concat(parameters('prefix'),'-web1')), '2019-07-01').hardwareprofile.vmSize]",
+                    "vmManagedDisks": [
+                        {
+                            // OS Disk, get ID from VM reference
+                            "diskId": "[reference(resourceId(variables('vm_web_rg_source'), 'Microsoft.Compute/virtualmachines', concat(parameters('prefix'),'-web1')), '2019-07-01').storageProfile.osDisk.managedDisk.id]",
+                            "recoveryResourceGroupId": "[concat(subscription().id,'/resourceGroups/',variables('vm_iaas_rg_dr'))]",
+                            "recoveryTargetDiskAccountType": "[parameters('recoveryTargetDiskAccountType_default')]",
+                            "primaryStagingAzureStorageAccountId": "[resourceId('Microsoft.Storage/storageAccounts', variables('source_asr_cache_stg'))]"
+                        },
+                        {
+                            // Data Disk #1 (zero count), get ID from VM reference
+                            "diskId": "[reference(resourceId(variables('vm_web_rg_source'), 'Microsoft.Compute/virtualmachines', concat(parameters('prefix'),'-web1')), '2019-07-01').storageProfile.datadisks[0].managedDisk.id]",
+                            "recoveryResourceGroupId": "[concat(subscription().id,'/resourceGroups/',variables('vm_iaas_rg_dr'))]",
+                            "recoveryTargetDiskAccountType": "[parameters('recoveryTargetDiskAccountType_default')]",
+                            "primaryStagingAzureStorageAccountId": "[resourceId('Microsoft.Storage/storageAccounts', variables('source_asr_cache_stg'))]"
+                        }
+                    ]
+                }
+            },
+            "dependsOn": [
+                "[variables('sourceContainerId')]",
+                "[variables('targetContainerId')]",
+                "[variables('sourcevNetMappingId')]",
+                "[variables('targetvNetMappingId')]"
+            ]
+        },
+        {
+            // Web 2
+            "type": "Microsoft.RecoveryServices/vaults/replicationFabrics/replicationProtectionContainers/replicationProtectedItems",
+            "apiVersion": "2018-01-10",
+            "name": "[concat(variables('vaults_rsv_name'),'/',parameters('source_region'),'-fabric','/',parameters('source_region'),'-container/web2')]",
+            "properties": {
+                "policyId": "[resourceId('Microsoft.RecoveryServices/vaults/replicationPolicies', variables('vaults_rsv_name'), '24-hour-retention-policy')]",
+                "providerSpecificDetails": {
+                    "instanceType": "A2A",
+                    "recoveryAzureVMName": "[concat(parameters('prefix'),'-web2')]",
+                    "fabricObjectId": "[resourceId(variables('vm_web_rg_source'), 'Microsoft.Compute/virtualmachines',concat(parameters('prefix'),'-web2'))]",
+                    "recoveryContainerId": "[variables('targetContainerId')]",
+                    "recoveryResourceGroupId": "[concat(subscription().id,'/resourceGroups/',variables('vm_iaas_rg_dr'))]",
+                    "primaryFabricLocation": "[parameters('source_region')]",
+                    "recoveryFabricLocation": "[parameters('destination_region')]",
+                    "RecoveryAvailabilitySetId": "[resourceId(variables('vm_iaas_rg_dr'), 'Microsoft.Compute/availabilitySets',concat(parameters('prefix'),'-web-dr-avset'))]",
+                    "recoveryAzureVMSize": "[reference(resourceId(variables('vm_web_rg_source'), 'Microsoft.Compute/virtualmachines', concat(parameters('prefix'),'-web2')), '2019-07-01').hardwareprofile.vmSize]",
+                    "vmManagedDisks": [
+                        {
+                            // OS Disk, get ID from VM reference
+                            "diskId": "[reference(resourceId(variables('vm_web_rg_source'), 'Microsoft.Compute/virtualmachines', concat(parameters('prefix'),'-web2')), '2019-07-01').storageProfile.osDisk.managedDisk.id]",
+                            "recoveryResourceGroupId": "[concat(subscription().id,'/resourceGroups/',variables('vm_iaas_rg_dr'))]",
+                            "recoveryTargetDiskAccountType": "[parameters('recoveryTargetDiskAccountType_default')]",
+                            "primaryStagingAzureStorageAccountId": "[resourceId('Microsoft.Storage/storageAccounts', variables('source_asr_cache_stg'))]"
+                        },
+                        {
+                            // Data Disk #1 (zero count), get ID from VM reference
+                            "diskId": "[reference(resourceId(variables('vm_web_rg_source'), 'Microsoft.Compute/virtualmachines', concat(parameters('prefix'),'-web2')), '2019-07-01').storageProfile.datadisks[0].managedDisk.id]",
+                            "recoveryResourceGroupId": "[concat(subscription().id,'/resourceGroups/',variables('vm_iaas_rg_dr'))]",
+                            "recoveryTargetDiskAccountType": "[parameters('recoveryTargetDiskAccountType_default')]",
+                            "primaryStagingAzureStorageAccountId": "[resourceId('Microsoft.Storage/storageAccounts', variables('source_asr_cache_stg'))]"
+                        }
+                    ]
+                }
+            },
+            "dependsOn": [
+                "[variables('sourceContainerId')]",
+                "[variables('targetContainerId')]",
+                "[variables('sourcevNetMappingId')]",
+                "[variables('targetvNetMappingId')]"
+            ]
+        },
+        {
+            // Recovery Plan - Test Failover
+            "type": "Microsoft.RecoveryServices/vaults/replicationRecoveryPlans",
+            "apiVersion": "2018-01-10",
+            "name": "[concat(parameters('prefix'),'-dr-rsv/','Isolated-Test-Failover-Plan')]",
+            "dependsOn": [
+                "[resourceId('Microsoft.RecoveryServices/vaults', variables('vaults_rsv_name'))]",
+                "[variables('sourceFabricId')]",
+                "[variables('targetFabricId')]",
+                "[concat('Microsoft.Automation/automationAccounts/', variables('automation-dr-accountname'))]",
+                // Also depend on a runbook being added, which comes in this template.
+                "[resourceId(variables('destinationvnetResourceGroupName'),'Microsoft.Automation/automationAccounts/runbooks',variables('automation-dr-accountname'),variables('runbook_attach-web-secondary-ip_name'))]",
+                // Also depends on each VM being protected too, otherwise it errors out
+                "[resourceId('Microsoft.RecoveryServices/vaults/replicationFabrics/replicationProtectionContainers/replicationProtectedItems',variables('vaults_rsv_name'),concat(parameters('source_region'),'-fabric'),concat(parameters('source_region'),'-container'),'ads1')]",
+                "[resourceId('Microsoft.RecoveryServices/vaults/replicationFabrics/replicationProtectionContainers/replicationProtectedItems',variables('vaults_rsv_name'),concat(parameters('source_region'),'-fabric'),concat(parameters('source_region'),'-container'),'rdp1')]",
+                "[resourceId('Microsoft.RecoveryServices/vaults/replicationFabrics/replicationProtectionContainers/replicationProtectedItems',variables('vaults_rsv_name'),concat(parameters('source_region'),'-fabric'),concat(parameters('source_region'),'-container'),'web1')]",
+                "[resourceId('Microsoft.RecoveryServices/vaults/replicationFabrics/replicationProtectionContainers/replicationProtectedItems',variables('vaults_rsv_name'),concat(parameters('source_region'),'-fabric'),concat(parameters('source_region'),'-container'),'web2')]"
+            ],
+            "properties": {
+                "primaryFabricId": "[variables('sourceFabricId')]",
+                "recoveryFabricId": "[variables('targetFabricId')]",
+                "failoverDeploymentModel": "ResourceManager",
+                "allowedOperations": [
+                    "TestFailover"
+                ],
+                "groups": [
+                    {
+                        // Boot ADS1 first, so that we have a domain
+                        "groupType": "Boot",
+                        "replicationProtectedItems": [
+                            {
+                                // Replication Protected Item ID
+                                "id": "[resourceId('Microsoft.RecoveryServices/vaults/replicationFabrics/replicationProtectionContainers/replicationProtectedItems',variables('vaults_rsv_name'),concat(parameters('source_region'),'-fabric'),concat(parameters('source_region'),'-container'),'ads1')]",
+                                // VM id
+                                "virtualMachineId": "[resourceId(variables('vm_web_rg_source'), 'Microsoft.Compute/virtualmachines',concat(parameters('prefix'),'-ads1'))]"
+                            }
+                        ]
+                    },
+                    {
+                        // Boot Remaining VMs, and run Post Actions
+                        "groupType": "Boot",
+                        "replicationProtectedItems": [
+                            {
+                                // RDP1
+                                "id": "[resourceId('Microsoft.RecoveryServices/vaults/replicationFabrics/replicationProtectionContainers/replicationProtectedItems',variables('vaults_rsv_name'),concat(parameters('source_region'),'-fabric'),concat(parameters('source_region'),'-container'),'rdp1')]",
+                                // VM id
+                                "virtualMachineId": "[resourceId(variables('vm_web_rg_source'), 'Microsoft.Compute/virtualmachines',concat(parameters('prefix'),'-rdp1'))]"
+                            },
+                            {
+                                // web1
+                                "id": "[resourceId('Microsoft.RecoveryServices/vaults/replicationFabrics/replicationProtectionContainers/replicationProtectedItems',variables('vaults_rsv_name'),concat(parameters('source_region'),'-fabric'),concat(parameters('source_region'),'-container'),'web1')]",
+                                // VM id
+                                "virtualMachineId": "[resourceId(variables('vm_web_rg_source'), 'Microsoft.Compute/virtualmachines',concat(parameters('prefix'),'-web1'))]"
+                            },
+                            {
+                                // web2
+                                "id": "[resourceId('Microsoft.RecoveryServices/vaults/replicationFabrics/replicationProtectionContainers/replicationProtectedItems',variables('vaults_rsv_name'),concat(parameters('source_region'),'-fabric'),concat(parameters('source_region'),'-container'),'web2')]",
+                                // VM id
+                                "virtualMachineId": "[resourceId(variables('vm_web_rg_source'), 'Microsoft.Compute/virtualmachines',concat(parameters('prefix'),'-web2'))]"
+                            }
+
+                        ],
+                        "endGroupActions": [
+                            {
+                                "actionName": "Runbook: attach public IP to RDP VM",
+                                "failoverTypes": [
+                                    "TestFailover"
+                                ],
+                                "failoverDirections": [
+                                    "PrimaryToRecovery"
+                                ],
+                                "customDetails": {
+                                    "instanceType": "AutomationRunbookActionDetails",
+                                    "description": "In order to access the environment, a pre-created Public IP address will be attached to the RDP VM.",
+                                    "runbookId": "[resourceId(variables('destinationvnetResourceGroupName'),'Microsoft.Automation/automationAccounts/runbooks',variables('automation-dr-accountname'),variables('runbook_attach-public-ip_name'))]",
+                                    //"timeout": "",
+                                    "fabricLocation": "Recovery"
+                                }
+                            },
+                            {
+                                "actionName": "Runbook: add NSG rule for 3389 from RDP to other subnets",
+                                "failoverTypes": [
+                                    "TestFailover"
+                                ],
+                                "failoverDirections": [
+                                    "PrimaryToRecovery"
+                                ],
+                                "customDetails": {
+                                    "instanceType": "AutomationRunbookActionDetails",
+                                    "description": "Default rules don't allow RDP sessions between subnets. This runbook will make it possible for the duration of the test.",
+                                    "runbookId": "[resourceId(variables('destinationvnetResourceGroupName'),'Microsoft.Automation/automationAccounts/runbooks',variables('automation-dr-accountname'),variables('runbook_add-nsg-for-rdp_name'))]",
+                                    //"timeout": "",
+                                    "fabricLocation": "Recovery"
+                                }
+                            },
+                            {
+                                "actionName": "Runbook: Add secondary IP to web servers",
+                                "failoverTypes": [
+                                    "TestFailover"
+                                ],
+                                "failoverDirections": [
+                                    "PrimaryToRecovery"
+                                ],
+                                "customDetails": {
+                                    "instanceType": "AutomationRunbookActionDetails",
+                                    "description": "ASR doesn't replicate secondary IP addresses. This runbook will re-added them to Web virtual machines",
+                                    "runbookId": "[resourceId(variables('destinationvnetResourceGroupName'),'Microsoft.Automation/automationAccounts/runbooks',variables('automation-dr-accountname'),variables('runbook_attach-web-secondary-ip_name'))]",
+                                    //"timeout": "",
+                                    "fabricLocation": "Recovery"
+                                }
+                            },
+                            {
+                                "actionName": "Runbook: Add Host file entries on RDP",
+                                "failoverTypes": [
+                                    "TestFailover"
+                                ],
+                                "failoverDirections": [
+                                    "PrimaryToRecovery"
+                                ],
+                                "customDetails": {
+                                    "instanceType": "AutomationRunbookActionDetails",
+                                    "description": "Host file entries for FQDN will be added to RDP1 to support testing functionality",
+                                    "runbookId": "[resourceId(variables('destinationvnetResourceGroupName'),'Microsoft.Automation/automationAccounts/runbooks',variables('automation-dr-accountname'),variables('runbook_add-host-file-entries'))]",
+                                    //"timeout": "",
+                                    "fabricLocation": "Recovery"
+                                }
+                            }
+                        ]
+                    }
+                ]
+            }
+        },
+        {
+            // Automation account specific for the client DR runbooks
+            "name": "[variables('automation-dr-accountname')]",
+            "type": "Microsoft.Automation/automationAccounts",
+            "apiVersion": "2015-10-31",
+            "location": "[parameters('automationRegion')]",
+            "properties": {
+                "sku": {
+                    "name": "Basic"
+                }
+            },
+            "resources": [
+                {
+                    // Add subscription ID as a variable inside the Automation Account
+                    "name": "[variables('assets').aaVariables.AzureSubscriptionId.name]",
+                    "type": "variables",
+                    "apiVersion": "2015-10-31",
+                    "dependsOn": [
+                        "[concat('Microsoft.Automation/automationAccounts/', variables('automation-dr-accountname'))]"
+                    ],
+                    "tags": {
+                    },
+                    "properties": {
+                        "description": "[variables('assets').aaVariables.AzureSubscriptionId.description]",
+                        "value": "[concat('\"',subscription().subscriptionId,'\"')]"
+                    }
+                },
+                {
+                    // Add prefix variable
+                    "name": "[variables('assets').aaVariables.prefix.name]",
+                    "type": "variables",
+                    "apiVersion": "2015-10-31",
+                    "dependsOn": [
+                        "[concat('Microsoft.Automation/automationAccounts/', variables('automation-dr-accountname'))]"
+                    ],
+                    "tags": {
+                    },
+                    "properties": {
+                        "description": "[variables('assets').aaVariables.prefix.description]",
+                        "value": "[concat('\"',variables('assets').aaVariables.prefix.value,'\"')]"
+                    }
+                },
+                {
+                    // Add first3octets variable
+                    "name": "[variables('assets').aaVariables.First3Octets.name]",
+                    "type": "variables",
+                    "apiVersion": "2015-10-31",
+                    "dependsOn": [
+                        "[concat('Microsoft.Automation/automationAccounts/', variables('automation-dr-accountname'))]"
+                    ],
+                    "tags": {
+                    },
+                    "properties": {
+                        "description": "[variables('assets').aaVariables.First3Octets.description]",
+                        "value": "[concat('\"',variables('assets').aaVariables.First3Octets.value,'\"')]"
+                    }
+                },
+                {
+                    // Add test_dnsname variable
+                    "name": "[variables('assets').aaVariables.test_dnsname.name]",
+                    "type": "variables",
+                    "apiVersion": "2015-10-31",
+                    "dependsOn": [
+                        "[concat('Microsoft.Automation/automationAccounts/', variables('automation-dr-accountname'))]"
+                    ],
+                    "tags": {
+                    },
+                    "properties": {
+                        "description": "[variables('assets').aaVariables.test_dnsname.description]",
+                        "value": "[concat('\"',variables('assets').aaVariables.test_dnsname.value,'\"')]"
+                    }
+                }
+            ]
+        },
+        {
+            // Runbooks - A single resource looping through the "asrScripts" variable containing multiple runbooks
+            "apiVersion": "2015-10-31",
+            "type": "Microsoft.Automation/automationAccounts/runbooks",
+            "name": "[concat(variables('automation-dr-accountname'), '/', variables('asrScripts').runbooks[copyIndex()].Name)]",
+            "location": "[parameters('automationRegion')]",
+            "dependsOn": [
+                "[resourceId('Microsoft.Automation/automationAccounts/', variables('automation-dr-accountname'))]"
+            ],
+            "copy": {
+                "name": "runbooksLoop",
+                "count": "[length(variables('asrScripts').runbooks)]" // Do it for as large as the length of the runbooks property of our variable is
+            },
+            "properties": {
+                "description": "[variables('asrScripts').runbooks[copyIndex()].description]",
+                "runbookType": "[variables('asrScripts').runbooks[copyIndex()].type]",
+                "logProgress": false,
+                "logVerbose": true,
+                "publishContentLink": {
+                    "uri": "[variables('asrScripts').runbooks[copyIndex()].url]",
+                    "version": "[variables('asrScripts').runbooks[copyIndex()].version]"
+                }
+            }
+        },
+        {
+            // Az.Accounts module, must do first.
+            "apiVersion": "2015-10-31",
+            "type": "Microsoft.Automation/automationAccounts/modules",
+            "name": "[concat(variables('automation-dr-accountname'), '/', variables('AzAccounts').name)]",
+            "location": "[parameters('automationRegion')]",
+            "dependsOn": [
+                "[resourceId('Microsoft.Automation/automationAccounts/', variables('automation-dr-accountname'))]"
+            ],
+            "properties": {
+                "contentLink": {
+                    "uri": "[variables('AzAccounts').url]"
+                }
+            }
+        },
+        {
+            // Remaining dependent modules, needs Az.Accounts as a re-req
+            "apiVersion": "2015-10-31",
+            "type": "Microsoft.Automation/automationAccounts/modules",
+            "name": "[concat(variables('automation-dr-accountname'), '/', variables('asrScripts').modules[copyIndex()].Name)]",
+            "location": "[parameters('automationRegion')]",
+            "dependsOn": [
+                "[resourceId('Microsoft.Automation/automationAccounts/', variables('automation-dr-accountname'))]",
+                "[resourceId('Microsoft.Automation/automationAccounts/modules/', variables('automation-dr-accountname'), variables('AzAccounts').name)]"
+            ],
+            "copy": {
+                "name": "modulesLoop",
+                "count": "[length(variables('asrScripts').modules)]"
+            },
+            "properties": {
+                "contentLink": {
+                    "uri": "[variables('asrScripts').modules[copyIndex()].url]"
+                }
+            }
+        }
+    ]
+}

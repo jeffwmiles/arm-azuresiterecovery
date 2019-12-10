@@ -1,0 +1,30 @@
+{
+    "$schema": "https://schema.management.azure.com/schemas/2015-01-01/deploymentTemplate.json#",
+    "contentVersion": "1.0.0.0",
+    "parameters": {
+        "clientcode": {
+            "value": "ABC" // this value should be lowercase to match standards
+        },
+        "first3octets": {
+            "value": "10.0.0" // this value should be lowercase to match standards
+        },
+        "destination_region": { // This parameter can't have any spaces
+            "value": "centralus"
+        },
+        "source_region": { // This parameter can't have any spaces
+            "value": "eastus2"
+        },
+        "recoveryTargetDiskAccountType_default": { // Destination disk type for all disks (we default to Standard, but may want to do Premium)
+            "value": "Standard_LRS"
+        },
+        "automationRegion": { // Region where automation account is. Should match destination region.
+            "value": "centralus"
+        },
+        "test_dnsname": { // FQDN of web site - to be injected for DR test to override DNS resolution
+            "value": "test.domain.com"
+        },
+        "runbookstg": { // Name of storage account where runbook PS1 files have been uploaded to.
+            "value": "storageaccountname"
+        },
+    }
+}
