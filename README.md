@@ -49,9 +49,10 @@ Hopefully leaving in these components will serve as a reference for others to bu
 To use this ARM template, follow these steps:
 
 1. Clone/Download the contents of the repository locally or in Azure Cloud Shell
-2. Update the parameter values in `parameters.json`
-3. Run `Login-AzAccount` and authenticate to your Azure tenant
-4. Run to deploy:
+2. Create storage account and upload contents of `runbooks` folder as blobs (see assumptions above)
+3. Update the parameter values in `parameters.json`
+4. Run `Login-AzAccount` and authenticate to your Azure tenant
+5. Run to deploy:
 ```
 .\initialize.ps1 `
     -prefix <unique prefix for environment> `
@@ -60,9 +61,9 @@ To use this ARM template, follow these steps:
     -subscription_id < Subid under which ASR is deployed`
 ```
 
-5. Manually create a Run-As account for the Automation Account that was created
-6. Configure Recovery Services Vault diagnostic settings to store ASR logs in Log Analytics workspace (manual step)
-7. Modify `dashboard.json` to include the following:
+6. Manually create a Run-As account for the Automation Account that was created
+7. Configure Recovery Services Vault diagnostic settings to store ASR logs in Log Analytics workspace (manual step)
+8. Modify `dashboard.json` to include the following:
     * SubscriptionId
     * ResourceGroup
     * Log Analytics workspace name
@@ -74,8 +75,8 @@ To use this ARM template, follow these steps:
     * Lines 184->187
     * Lines 273->276
 
-8. Import `dashboard.json` as an [Azure Dashboard](https://docs.microsoft.com/en-us/azure/azure-portal/azure-portal-dashboards)
-9. Manually run the runbook `dr-enableextensionupdate` from the Azure Automation Account, to enable ASR extension updates
+9. Import `dashboard.json` as an [Azure Dashboard](https://docs.microsoft.com/en-us/azure/azure-portal/azure-portal-dashboards)
+10. Manually run the runbook `dr-enableextensionupdate` from the Azure Automation Account, to enable ASR extension updates
 
 ## Contributing to this Template
 
