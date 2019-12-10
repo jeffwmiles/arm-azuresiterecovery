@@ -25,6 +25,6 @@
         },
         "runbookstg": { // Name of storage account where runbook PS1 files have been uploaded to.
             "value": "storageaccountname"
-        },
+        }
     }
 }

@@ -9,7 +9,7 @@ A full PowerShell and ARM solution for Azure Site Recovery implementation and Re
 ![GitHub forks](https://img.shields.io/github/forks/jeffwmiles/arm-azuresiterecovery?style=social)
 ![Twitter Follow](https://img.shields.io/twitter/follow/jwmiles5?style=social)
 
-Project name is a Azure Resourcce Manager template and PowerShell script that allows Azure Administrators to deploy Azure Site Recovery for selected VMs along with a Recovery Plan for testing.
+This is a Azure Resourcce Manager template and PowerShell script that allows Azure Administrators to deploy Azure Site Recovery for selected VMs along with a Recovery Plan for testing.
 
 This demonstrates integration with Azure Automation runbooks in a recovery plan to perform functions like apply a Public IP, add secondary IP's to VMs, and add network security group rules.
 
@@ -22,6 +22,13 @@ Before you begin, ensure you have met the following requirements:
 * You have an understanding of [Azure Site Recovery for Azure-to-Azure](https://docs.microsoft.com/en-us/azure/site-recovery/azure-to-azure-architecture)
 
 * Have a source environment that matches the definition in the ARM template (VM name structure primarily)
+    | Type        | Name           | ResourceGroup  |
+    | ------------- |:-------------:| -----:|
+    | Virtual Machine      | $prefix-ads1      | $prefix-mgmt-rg |
+    | Virtual Machine      | $prefix-rdp1      |   $prefix-mgmt-rg |
+    | Virtual Machine      | $prefix-web1      |   $prefix-web-rg |
+    | Virtual Machine      | $prefix-web2      |   $prefix-web-rg |
+    | Virtual Network      | $prefix-vnet      |   $prefix-srv-rg |
 
 ## Assumptions
 
@@ -63,7 +70,7 @@ To use this ARM template, follow these steps:
     * Lines 184->187
     * Lines 273->276
 
-8. Import `dashboard.json` as an Azure Dashboard
+8. Import `dashboard.json` as an [Azure Dashboard](https://docs.microsoft.com/en-us/azure/azure-portal/azure-portal-dashboards)
 9. Manually run the runbook `dr-enableextensionupdate` from the Azure Automation Account, to enable ASR extension updates
 
 ## Contributing to this Template
