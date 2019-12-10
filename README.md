@@ -32,6 +32,8 @@ Before you begin, ensure you have met the following requirements:
     | Virtual Machine      | $prefix-web1      |   $prefix-web-rg |
     | Virtual Machine      | $prefix-web2      |   $prefix-web-rg |
     | Virtual Network      | $prefix-vnet      |   $prefix-srv-rg |
+    | Availability Set      | $prefix-ads-dr-avset      |   $prefix-srv-rg |
+    | Availability Set      | $prefix-web-dr-avset      |   $prefix-srv-rg |
 
 ## Assumptions
 
