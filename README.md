@@ -9,9 +9,11 @@ A full PowerShell and ARM solution for Azure Site Recovery implementation and Re
 ![GitHub forks](https://img.shields.io/github/forks/jeffwmiles/arm-azuresiterecovery?style=social)
 ![Twitter Follow](https://img.shields.io/twitter/follow/jwmiles5?style=social)
 
-This is a Azure Resourcce Manager template and PowerShell script that allows Azure Administrators to deploy Azure Site Recovery for selected VMs along with a Recovery Plan for testing.
+This is a Azure Resource Manager template and PowerShell script that allows Azure Administrators to deploy Azure Site Recovery for selected VMs along with a Recovery Plan for testing.
 
 This demonstrates integration with Azure Automation runbooks in a recovery plan to perform functions like apply a Public IP, add secondary IP's to VMs, and add network security group rules.
+
+[Faultbucket blog post](https://faultbucket.ca/2019/12/azure-site-recovery-arm-template/)
 
 ## Prerequisites
 
@@ -101,4 +103,4 @@ I built this template through much trial and error, but I did use a couple of so
 
 ## Contact
 
-If you want to contact me you can reach me on [Twitter](https://twitter.com/jwmiles5)
+If you want to contact me you can reach me on [Twitter](https://twitter.com/jwmiles5) or through my blog [Faultbucket](https://faultbucket.ca)
