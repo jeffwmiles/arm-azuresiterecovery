@@ -399,6 +399,7 @@
                             // OS Disk, get ID from VM reference
                             "diskId": "[reference(resourceId(variables('vm_mgmt_rg_source'), 'Microsoft.Compute/virtualmachines', concat(parameters('prefix'),'-ads1')), '2019-07-01').storageProfile.osDisk.managedDisk.id]",
                             "recoveryResourceGroupId": "[concat(subscription().id,'/resourceGroups/',variables('vm_mgmt_rg_dr'))]",
+                            "recoveryReplicaDiskAccountType": "[parameters('recoveryTargetDiskAccountType_default')]",
                             "recoveryTargetDiskAccountType": "[parameters('recoveryTargetDiskAccountType_default')]",
                             "primaryStagingAzureStorageAccountId": "[resourceId('Microsoft.Storage/storageAccounts', variables('source_asr_cache_stg'))]"
                         },
@@ -406,6 +407,7 @@
                             // Data Disk #1 (zero count), get ID from VM reference
                             "diskId": "[reference(resourceId(variables('vm_mgmt_rg_source'), 'Microsoft.Compute/virtualmachines', concat(parameters('prefix'),'-ads1')), '2019-07-01').storageProfile.datadisks[0].managedDisk.id]",
                             "recoveryResourceGroupId": "[concat(subscription().id,'/resourceGroups/',variables('vm_mgmt_rg_dr'))]",
+                            "recoveryReplicaDiskAccountType": "[parameters('recoveryTargetDiskAccountType_default')]",
                             "recoveryTargetDiskAccountType": "[parameters('recoveryTargetDiskAccountType_default')]",
                             "primaryStagingAzureStorageAccountId": "[resourceId('Microsoft.Storage/storageAccounts', variables('source_asr_cache_stg'))]"
                         }
@@ -440,6 +442,7 @@
                             // OS Disk, get ID from VM reference
                             "diskId": "[reference(resourceId(variables('vm_mgmt_rg_source'), 'Microsoft.Compute/virtualmachines', concat(parameters('prefix'),'-rdp1')), '2019-07-01').storageProfile.osDisk.managedDisk.id]",
                             "recoveryResourceGroupId": "[concat(subscription().id,'/resourceGroups/',variables('vm_mgmt_rg_dr'))]",
+                            "recoveryReplicaDiskAccountType": "[parameters('recoveryTargetDiskAccountType_default')]",
                             "recoveryTargetDiskAccountType": "[parameters('recoveryTargetDiskAccountType_default')]",
                             "primaryStagingAzureStorageAccountId": "[resourceId('Microsoft.Storage/storageAccounts', variables('source_asr_cache_stg'))]"
                         },
@@ -447,6 +450,7 @@
                             // Data Disk #1 (zero count), get ID from VM reference
                             "diskId": "[reference(resourceId(variables('vm_mgmt_rg_source'), 'Microsoft.Compute/virtualmachines', concat(parameters('prefix'),'-rdp1')), '2019-07-01').storageProfile.datadisks[0].managedDisk.id]",
                             "recoveryResourceGroupId": "[concat(subscription().id,'/resourceGroups/',variables('vm_mgmt_rg_dr'))]",
+                            "recoveryReplicaDiskAccountType": "[parameters('recoveryTargetDiskAccountType_default')]",
                             "recoveryTargetDiskAccountType": "[parameters('recoveryTargetDiskAccountType_default')]",
                             "primaryStagingAzureStorageAccountId": "[resourceId('Microsoft.Storage/storageAccounts', variables('source_asr_cache_stg'))]"
                         }
@@ -482,6 +486,7 @@
                             // OS Disk, get ID from VM reference
                             "diskId": "[reference(resourceId(variables('vm_web_rg_source'), 'Microsoft.Compute/virtualmachines', concat(parameters('prefix'),'-web1')), '2019-07-01').storageProfile.osDisk.managedDisk.id]",
                             "recoveryResourceGroupId": "[concat(subscription().id,'/resourceGroups/',variables('vm_iaas_rg_dr'))]",
+                            "recoveryReplicaDiskAccountType": "[parameters('recoveryTargetDiskAccountType_default')]",
                             "recoveryTargetDiskAccountType": "[parameters('recoveryTargetDiskAccountType_default')]",
                             "primaryStagingAzureStorageAccountId": "[resourceId('Microsoft.Storage/storageAccounts', variables('source_asr_cache_stg'))]"
                         },
@@ -489,6 +494,7 @@
                             // Data Disk #1 (zero count), get ID from VM reference
                             "diskId": "[reference(resourceId(variables('vm_web_rg_source'), 'Microsoft.Compute/virtualmachines', concat(parameters('prefix'),'-web1')), '2019-07-01').storageProfile.datadisks[0].managedDisk.id]",
                             "recoveryResourceGroupId": "[concat(subscription().id,'/resourceGroups/',variables('vm_iaas_rg_dr'))]",
+                            "recoveryReplicaDiskAccountType": "[parameters('recoveryTargetDiskAccountType_default')]",
                             "recoveryTargetDiskAccountType": "[parameters('recoveryTargetDiskAccountType_default')]",
                             "primaryStagingAzureStorageAccountId": "[resourceId('Microsoft.Storage/storageAccounts', variables('source_asr_cache_stg'))]"
                         }
@@ -524,6 +530,7 @@
                             // OS Disk, get ID from VM reference
                             "diskId": "[reference(resourceId(variables('vm_web_rg_source'), 'Microsoft.Compute/virtualmachines', concat(parameters('prefix'),'-web2')), '2019-07-01').storageProfile.osDisk.managedDisk.id]",
                             "recoveryResourceGroupId": "[concat(subscription().id,'/resourceGroups/',variables('vm_iaas_rg_dr'))]",
+                            "recoveryReplicaDiskAccountType": "[parameters('recoveryTargetDiskAccountType_default')]",
                             "recoveryTargetDiskAccountType": "[parameters('recoveryTargetDiskAccountType_default')]",
                             "primaryStagingAzureStorageAccountId": "[resourceId('Microsoft.Storage/storageAccounts', variables('source_asr_cache_stg'))]"
                         },
@@ -531,6 +538,7 @@
                             // Data Disk #1 (zero count), get ID from VM reference
                             "diskId": "[reference(resourceId(variables('vm_web_rg_source'), 'Microsoft.Compute/virtualmachines', concat(parameters('prefix'),'-web2')), '2019-07-01').storageProfile.datadisks[0].managedDisk.id]",
                             "recoveryResourceGroupId": "[concat(subscription().id,'/resourceGroups/',variables('vm_iaas_rg_dr'))]",
+                            "recoveryReplicaDiskAccountType": "[parameters('recoveryTargetDiskAccountType_default')]",
                             "recoveryTargetDiskAccountType": "[parameters('recoveryTargetDiskAccountType_default')]",
                             "primaryStagingAzureStorageAccountId": "[resourceId('Microsoft.Storage/storageAccounts', variables('source_asr_cache_stg'))]"
                         }
